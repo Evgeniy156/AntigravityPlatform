@@ -25,23 +25,41 @@ export default function DevelopPage() {
     const [showPaywall, setShowPaywall] = useState(false)
     const [isExporting, setIsExporting] = useState(false)
 
-    const sendMessage = () => {
+    const sendMessage = async () => {
         if (!input.trim()) return
         const userMsg: Message = { id: Date.now(), role: 'user', text: input }
         setMessages((prev) => [...prev, userMsg])
         setInput('')
         setThinking(true)
 
-        // Simulate AI response
-        setTimeout(() => {
+        try {
+            // Setup what we send to the backend. The backend expects an array of messages
+            // Make sure not to pass `id` to openai, only role and content
+            // We'll pass the whole history for context.
+            const historyForOpenAI = [...messages, userMsg].map(m => ({
+                role: m.role === 'mentor' ? 'assistant' : 'user',
+                content: m.text
+            }));
+
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages: historyForOpenAI })
+            });
+            const data = await response.json();
+
             const mentorMsg: Message = {
                 id: Date.now() + 1,
                 role: 'mentor',
-                text: 'Отличная идея! Давай разберём её по шагам. Для такого проекта я бы рекомендовал использовать навык **discovery-interview** для проработки требований, затем **coding-agent** для параллельной генерации кода. Что думаешь?',
-            }
+                text: data.reply || data.error || 'Server error, no reply.'
+            };
             setMessages((prev) => [...prev, mentorMsg])
+        } catch (error) {
+            console.error(error);
+            setMessages((prev) => [...prev, { id: Date.now(), role: 'mentor', text: 'Ошибка сети. Сервер не доступен.' }]);
+        } finally {
             setThinking(false)
-        }, 1500)
+        }
     }
 
     const handleExport = async () => {
@@ -100,8 +118,8 @@ export default function DevelopPage() {
                         {messages.map((msg) => (
                             <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user'
-                                        ? 'bg-primary text-white rounded-br-md'
-                                        : 'bg-surface-light text-text-primary rounded-bl-md border border-border'
+                                    ? 'bg-primary text-white rounded-br-md'
+                                    : 'bg-surface-light text-text-primary rounded-bl-md border border-border'
                                     }`}>
                                     {msg.role === 'mentor' && (
                                         <div className="flex items-center gap-2 mb-1.5 text-xs text-primary font-medium">
