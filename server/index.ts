@@ -23,48 +23,47 @@ const openai = new OpenAI({
 // Using the explicit path as requested by the user
 const AGENTS_SKILLS_PATH = 'C:/Users/III/Desktop/Portfolio/.agents/skills';
 
-app.get('/api/skills', (req, res) => {
-    try {
-        if (!fs.existsSync(AGENTS_SKILLS_PATH)) {
-            return res.status(404).json({ error: 'Skills directory not found' });
+function getLocalSkills() {
+    if (!fs.existsSync(AGENTS_SKILLS_PATH)) {
+        return [];
+    }
+    const skillFolders = fs.readdirSync(AGENTS_SKILLS_PATH, { withFileTypes: true })
+        .filter(dirent => dirent.isDirectory())
+        .map(dirent => dirent.name);
+
+    return skillFolders.map(folderName => {
+        const skillFilePath = path.join(AGENTS_SKILLS_PATH, folderName, 'SKILL.md');
+        if (!fs.existsSync(skillFilePath)) return null;
+
+        const content = fs.readFileSync(skillFilePath, 'utf8');
+        let name = folderName;
+        let description = 'Описание навыка отсутствует';
+
+        const match = content.match(/^---\n([\s\S]+?)\n---/);
+        if (match) {
+            const frontmatter = match[1];
+            const nameMatch = frontmatter.match(/^name:\s*(.+)$/m);
+            const descMatch = frontmatter.match(/^description:\s*(.+)$/m);
+
+            if (nameMatch) name = nameMatch[1].trim();
+            if (descMatch) description = descMatch[1].trim();
         }
 
-        const skillFolders = fs.readdirSync(AGENTS_SKILLS_PATH, { withFileTypes: true })
-            .filter(dirent => dirent.isDirectory())
-            .map(dirent => dirent.name);
+        return {
+            id: folderName,
+            title: name,
+            desc: description,
+            status: 'installed',
+        };
+    }).filter(skill => skill !== null);
+}
 
-        const skills = skillFolders.map(folderName => {
-            const skillFilePath = path.join(AGENTS_SKILLS_PATH, folderName, 'SKILL.md');
-
-            if (!fs.existsSync(skillFilePath)) {
-                return null;
-            }
-
-            const content = fs.readFileSync(skillFilePath, 'utf8');
-            let name = folderName;
-            let description = 'Описание навыка отсутствует (парсинг YAML)';
-
-            // Extract YAML frontmatter
-            const match = content.match(/^---\n([\s\S]+?)\n---/);
-            if (match) {
-                const frontmatter = match[1];
-                const nameMatch = frontmatter.match(/^name:\s*(.+)$/m);
-                const descMatch = frontmatter.match(/^description:\s*(.+)$/m);
-
-                if (nameMatch) name = nameMatch[1].trim();
-                // YAML description might be multi-line or just one string, we take whatever matched naively,
-                // or if it spans lines, we might miss it. Let's try to match it cleanly.
-                if (descMatch) description = descMatch[1].trim();
-            }
-
-            return {
-                id: folderName,
-                title: name,
-                desc: description,
-                status: 'installed', // From .agents
-            };
-        }).filter(skill => skill !== null);
-
+app.get('/api/skills', (req, res) => {
+    try {
+        const skills = getLocalSkills();
+        if (skills.length === 0 && !fs.existsSync(AGENTS_SKILLS_PATH)) {
+            return res.status(404).json({ error: 'Skills directory not found' });
+        }
         res.json({ data: skills });
     } catch (error: any) {
         console.error('API Error:', error);
@@ -83,10 +82,27 @@ app.post('/api/chat', async (req, res) => {
             });
         }
 
+        // --- RAG / Context Injection ---
+        // Dynamically read available skills
+        const skills = getLocalSkills();
+        let skillsContext = "У пользователя пока нет установленных навыков.";
+        if (skills.length > 0) {
+            skillsContext = "У пользователя УЖЕ УСТАНОВЛЕНЫ следующие навыки (их можно использовать для делегирования задач):\n" +
+                skills.map((s: any) => `- **${s.title}** (${s.id}): ${s.desc}`).join('\n');
+        }
+
+        const systemPrompt = `Ты ИИ-Ментор для разработчика. Твоя задача — помогать проектировать MVP и архитектуру мультиагентных систем.
+Давай краткие, полезные советы.
+
+[NotebookLM / Известный Контекст Среды Пользователя]
+${skillsContext}
+
+Обязательно используй эту информацию для рекомендаций. Советуй конкретные навыки для подходящих этапов разработки.`;
+
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini", // Fast and cheap for MVP
             messages: [
-                { role: "system", content: "Ты ИИ-Ментор для разработчика. Помогаешь проектировать MVP и архитектуру мультиагентных систем. Давай краткие, полезные советы." },
+                { role: "system", content: systemPrompt },
                 ...messages
             ],
             temperature: 0.7,
