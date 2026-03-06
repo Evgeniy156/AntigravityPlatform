@@ -1,6 +1,12 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
+import { loginWithGoogle, loginWithGithub, logout } from '../lib/firebase'
 
 export default function Navbar() {
+    const { user, loading } = useAuth()
+    const [showDropdown, setShowDropdown] = useState(false)
+
     return (
         <nav className="glass sticky top-0 z-50 border-b border-white/5">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -51,9 +57,51 @@ export default function Navbar() {
                     </div>
 
                     {/* Auth */}
-                    <button className="btn-primary text-sm">
-                        Войти
-                    </button>
+                    <div className="relative">
+                        {loading ? (
+                            <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin m-2"></div>
+                        ) : user ? (
+                            <div>
+                                <button
+                                    onClick={() => setShowDropdown(!showDropdown)}
+                                    className="flex items-center gap-2 focus:outline-none transition-transform active:scale-95"
+                                >
+                                    {user.photoURL ? (
+                                        <img src={user.photoURL} alt="Avatar" className="w-9 h-9 rounded-full border border-border" />
+                                    ) : (
+                                        <div className="w-9 h-9 rounded-full bg-surface-light border border-border flex items-center justify-center text-primary font-bold">
+                                            {user.displayName?.charAt(0) || user.email?.charAt(0) || 'U'}
+                                        </div>
+                                    )}
+                                </button>
+
+                                {showDropdown && (
+                                    <div className="absolute right-0 mt-2 w-56 bg-surface-card border border-border rounded-xl shadow-xl py-2 z-50">
+                                        <div className="px-4 py-3 border-b border-border mb-2">
+                                            <p className="text-sm font-medium text-text-primary truncate">{user.displayName || 'Пользователь'}</p>
+                                            <p className="text-xs text-text-secondary truncate mt-0.5">{user.email}</p>
+                                        </div>
+                                        <div className="px-4 py-2 border-b border-border mb-2 flex justify-between items-center text-xs text-text-secondary">
+                                            <span>Экспорты (Free)</span>
+                                            <span className="font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">{user.exportCount} / 5</span>
+                                        </div>
+                                        <button onClick={logout} className="w-full text-left px-4 py-2 text-sm text-danger hover:bg-surface-light transition-colors">
+                                            Выйти из аккаунта
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2 sm:gap-3">
+                                <button onClick={loginWithGoogle} className="btn-secondary text-xs sm:text-sm px-3 sm:px-4 py-2 whitespace-nowrap">
+                                    Google
+                                </button>
+                                <button onClick={loginWithGithub} className="btn-primary text-xs sm:text-sm px-3 sm:px-4 py-2 whitespace-nowrap">
+                                    GitHub
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </nav>
