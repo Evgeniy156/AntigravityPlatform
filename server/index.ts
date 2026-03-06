@@ -13,10 +13,14 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Init OpenAI
-// We won't crash if the key is missing, we'll just return an error gracefully when the user tries to chat.
+// Init OpenRouter via OpenAI SDK
 const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY || 'dummy_key',
+    baseURL: 'https://openrouter.ai/api/v1',
+    apiKey: process.env.OPENROUTER_API_KEY || 'dummy_key',
+    defaultHeaders: {
+        "HTTP-Referer": "http://localhost:5173", // Optional, for including your app on openrouter.ai rankings.
+        "X-Title": "Antigravity MVP", // Optional. Shows in rankings on openrouter.ai.
+    }
 });
 
 // Path to the .agents/skills directory on the user's desktop
@@ -76,9 +80,9 @@ app.post('/api/chat', async (req, res) => {
     try {
         const { messages } = req.body;
 
-        if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'dummy_key') {
+        if (!process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY === 'dummy_key') {
             return res.json({
-                reply: "⚠️ Серверу требуется валидный `OPENAI_API_KEY` в файле `.env`, чтобы я мог ответить. Добавьте его, перезапустите `npm run dev` и задайте вопрос снова!"
+                reply: "⚠️ Серверу требуется валидный `OPENROUTER_API_KEY` в файле `.env`, чтобы я мог ответить. Добавьте его, перезапустите `npm run dev` и задайте вопрос снова!"
             });
         }
 
@@ -92,7 +96,7 @@ app.post('/api/chat', async (req, res) => {
         }
 
         const systemPrompt = `Ты ИИ-Ментор для разработчика. Твоя задача — помогать проектировать MVP и архитектуру мультиагентных систем.
-Давай краткие, полезные советы.
+Давай краткие, полезные советы. Отвечай на русском языке.
 
 [NotebookLM / Известный Контекст Среды Пользователя]
 ${skillsContext}
@@ -100,7 +104,7 @@ ${skillsContext}
 Обязательно используй эту информацию для рекомендаций. Советуй конкретные навыки для подходящих этапов разработки.`;
 
         const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini", // Fast and cheap for MVP
+            model: "google/gemini-2.0-flash-lite-preview-02-05:free",
             messages: [
                 { role: "system", content: systemPrompt },
                 ...messages
@@ -109,8 +113,9 @@ ${skillsContext}
         });
 
         res.json({ reply: completion.choices[0].message.content });
+
     } catch (error: any) {
-        console.error('OpenAI API Error:', error);
+        console.error('OpenRouter API Error:', error);
         res.status(500).json({ error: error.message || 'Error communicating with AI' });
     }
 });
