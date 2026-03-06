@@ -1,0 +1,1 @@
+const http = require('http'); http.get('http://localhost:3001/api/skills', (res) => { let rawData = ''; res.on('data', (chunk) => { rawData += chunk; }); res.on('end', () => { console.log('HTTP Status:', res.statusCode); console.log('Response body:', JSON.parse(rawData).data.map(d=>d.title).join(', ')); }); }).on('error', (e) => { console.error('Got error:', e.message); });
